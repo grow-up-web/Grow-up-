@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GROW UP | Master Admin Control</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: #f1f5f9; color: #1e293b; padding: 15px; }
+        .container { max-width: 1000px; margin: auto; }
+        .admin-header { background: #1e293b; color: white; padding: 25px; border-radius: 20px; text-align: center; margin-bottom: 25px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .admin-header img { max-width: 150px; margin-bottom: 10px; border-radius: 10px; }
+        .card { background: white; padding: 20px; border-radius: 18px; margin-bottom: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        h2 { font-size: 18px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; color: #1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }
+        
+        /* Master Toggle Style */
+        .status-bar { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; padding: 15px; border-radius: 12px; border: 2px solid #e2e8f0; }
+        #statusLabel { font-weight: 800; text-transform: uppercase; }
+
+        input, textarea, select { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #f1f5f9; border-radius: 10px; font-size: 14px; outline: none; }
+        .btn { background: #1e293b; color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-weight: 700; cursor: pointer; transition: 0.3s; }
+        .btn-save { background: #10b981; padding: 6px 12px; width: auto; font-size: 12px; }
+        .table-res { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; min-width: 600px; }
+        th { text-align: left; background: #f8fafc; padding: 12px; font-size: 11px; color: #64748b; text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="admin-header">
+            <img src="https://ibb.co/GvnQjRSw" alt="GROW UP Logo" onerror="this.style.display='none'">
+            <h1><i class="fa-solid fa-user-shield"></i> Master Control</h1>
+            <p>GROW UP - Database Admin Panel</p>
+        </div>
+
+        <div class="card" style="border-left: 5px solid #1e293b;">
+            <h2><i class="fa-solid fa-power-off"></i> Lead System Master Control</h2>
+            <div class="status-bar">
+                <span id="statusLabel">Loading...</span>
+                <button id="toggleBtn" class="btn" style="width: auto; padding: 10px 30px;" onclick="toggleSystem()">Checking...</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><i class="fa-solid fa-plus-circle"></i> Bulk Add Leads (ID System)</h2>
+            <input type="text" id="leadGroupId" placeholder="Assign Lead ID (e.g. 5566, L101)">
+            <textarea id="numList" placeholder="Paste Numbers here (One number per line)"></textarea>
+            <button class="btn" onclick="saveLeads()"><i class="fa-solid fa-upload"></i> Upload Lead Group</button>
+        </div>
+
+        <div class="card">
+            <h2><i class="fa-solid fa-list-check"></i> Manage User Claims</h2>
+            <input type="text" id="adminSearch" placeholder="Search by Leader Code or Number..." onkeyup="filterClaims()">
+            <div class="table-res">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Leader</th>
+                            <th>Number</th>
+                            <th>Portal</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="claimTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = { databaseURL: "https://rise-up-4e6ca-default-rtdb.firebaseio.com/" };
+        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+        const database = firebase.database();
+
+        // --- 1. MASTER TOGGLE LOGIC ---
+        function checkSystemStatus() {
+            database.ref('system_settings/lead_status').on('value', (snapshot) => {
+                const status = snapshot.val() || "ON";
+                const label = document.getElementById('statusLabel');
+                const btn = document.getElementById('toggleBtn');
+                
+                if(status === "ON") {
+                    label.innerText = "System Status: ACTIVE (ON)";
+                    label.style.color = "#10b981";
+                    btn.innerText = "TURN OFF SYSTEM";
+                    btn.style.background = "#ef4444";
+                } else {
+                    label.innerText = "System Status: CLOSED (OFF)";
+                    label.style.color = "#ef4444";
+                    btn.innerText = "TURN ON SYSTEM";
+                    btn.style.background = "#10b981";
+                }
+            });
+        }
+
+        function toggleSystem() {
+            database.ref('system_settings/lead_status').once('value', (snapshot) => {
+                const current = snapshot.val() || "ON";
+                const next = current === "ON" ? "OFF" : "ON";
+                database.ref('system_settings').update({ lead_status: next });
+            });
+        }
+
+        // --- 2. REST OF THE LOGIC ---
+        function saveLeads() {
+            const id = document.getElementById('leadGroupId').value.trim();
+            const text = document.getElementById('numList').value.trim();
+            if(!id || !text) return Swal.fire('Error', 'Fill all fields!', 'error');
+            const numbers = text.split('\n').map(n => n.trim()).filter(n => n !== "");
+            database.ref('lead_groups/' + id).set({ leads: numbers, date: new Date().toLocaleDateString() })
+            .then(() => { Swal.fire('Uploaded!', 'Saved successfully.', 'success'); });
+        }
+
+        function loadClaims() {
+            database.ref('claims').on('value', (snapshot) => {
+                const data = snapshot.val();
+                const tableBody = document.getElementById('claimTable');
+                tableBody.innerHTML = "";
+                if(!data) return;
+                Object.keys(data).reverse().forEach(key => {
+                    const row = data[key];
+                    tableBody.innerHTML += `
+                        <tr class="claim-row">
+                            <td>${row.owner || 'N/A'}</td>
+                            <td>${row.number || 'N/A'}</td>
+                            <td>${row.portal || 'N/A'}</td>
+                            <td>
+                                <select id="st-${key}" style="padding:5px; border-radius:5px; width:100px;">
+                                    <option value="WAIT" ${row.status === 'WAIT' ? 'selected' : ''}>WAIT</option>
+                                    <option value="APPROVED" ${row.status === 'APPROVED' ? 'selected' : ''}>APPROVE</option>
+                                    <option value="DISAPPROVED" ${row.status === 'DISAPPROVED' ? 'selected' : ''}>REJECT</option>
+                                </select>
+                            </td>
+                            <td><button class="btn btn-save" onclick="updateStatus('${key}')">Save</button></td>
+                        </tr>`;
+                });
+            });
+        }
+
+        function updateStatus(key) {
+            const newStatus = document.getElementById('st-' + key).value;
+            database.ref('claims/' + key).update({ status: newStatus })
+            .then(() => { Swal.fire({ title: 'Saved!', icon: 'success', timer: 1000, showConfirmButton: false }); });
+        }
+
+        function filterClaims() {
+            const input = document.getElementById('adminSearch').value.toUpperCase();
+            document.querySelectorAll('.claim-row').forEach(row => {
+                row.style.display = row.innerText.toUpperCase().includes(input) ? "" : "none";
+            });
+        }
+
+        window.onload = function() { loadClaims(); checkSystemStatus(); };
+    </script>
+</body>
+</html>
